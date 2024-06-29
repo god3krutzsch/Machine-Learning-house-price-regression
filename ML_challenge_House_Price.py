@@ -1,3 +1,5 @@
+
+
 import pandas as pd
 import numpy as np
 
@@ -9,6 +11,8 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
 import matplotlib.pyplot as plt  # Matlab-style plotting
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
 
 # special encoder that retains ordinal order requirements
 from sklearn.preprocessing import OrdinalEncoder
@@ -24,7 +28,8 @@ from scipy import stats
 import asyncio
 
 # ai model import
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression, RidgeCV, Ridge, Lasso, ElasticNet
+from sklearn.ensemble import RandomForestRegressor, StackingRegressor
 
 # r-square performance measure regression model
 from sklearn.metrics import r2_score
@@ -34,6 +39,7 @@ file_path_test = "/Users/godfreykrutzsch/Desktop/ML-Challenge_House Price/test.c
 
 training_data = pd.read_csv(file_path)
 test_data = pd.read_csv(file_path_test)
+
 
 # there are problems with this particular column
 training_data.drop(columns='FireplaceQu', inplace=True)
@@ -45,6 +51,8 @@ print(training_data.isnull().sum())
 print(training_data.isna())
 print(test_data.isnull().sum())
 print(test_data.isna())
+print(test_data.info())
+print(test_data.head())
 
 print("Shape of training data:", training_data.shape)
 print("Shape of test date:", test_data.shape)
@@ -69,12 +77,6 @@ def grLiveArea_Saleprice():
     plt.xlabel('GrLivArea', fontsize=13)
     plt.show()
 
-    # def correlation_amongst_variables():
-    corr = training_data.corr()
-    plt.subplots(figsize=(13, 10))
-    sns.heatmap(corr, vmax=0.9, cmap="Blues", square=True)
-
-
 def totalBsmtSF_SalePrice():
     fig, ax = plt.subplots()
     ax.scatter(x=training_data['GrLivArea'], y=training_data['SalePrice'])
@@ -82,24 +84,12 @@ def totalBsmtSF_SalePrice():
     plt.xlabel('TotalBsmtSF', fontsize=13)
     plt.show()
 
-    # def correlation_amongst_variables():
-    corr = training_data.corr()
-    plt.subplots(figsize=(13, 10))
-    sns.heatmap(corr, vmax=0.9, cmap="Blues", square=True)
-
-
 def garageCars_SalePrice():
     fig, ax = plt.subplots()
     ax.scatter(x=training_data['GrLivArea'], y=training_data['SalePrice'])
     plt.ylabel('SalePrice', fontsize=13)
     plt.xlabel('GarageCars', fontsize=13)
     plt.show()
-
-    # def correlation_amongst_variables():
-    corr = training_data.corr()
-    plt.subplots(figsize=(13, 10))
-    sns.heatmap(corr, vmax=0.9, cmap="Blues", square=True)
-
 
 def overallLivingQual():
     fig, ax = plt.subplots()
@@ -110,6 +100,7 @@ def overallLivingQual():
 
 
 def log_transformation():
+
     training_data["SalePrice"] = np.log1p(training_data["SalePrice"])
     sns.histplot(training_data['SalePrice']).set_title("Distribution of Sales Price after Log trans")
     # probability plot
@@ -117,6 +108,11 @@ def log_transformation():
     res = stats.probplot(training_data['SalePrice'], plot=plt)
     # plt.show()
 
+distribution_graph()
+grLiveArea_Saleprice()
+totalBsmtSF_SalePrice()
+garageCars_SalePrice()
+overallLivingQual()
 
 # we eliminate outliers from the get go and start log transformation. this changes the shape from 1460 to 1458 as we
 # kill to rows with 4676 and 5642 outliers, therefore we cannot meet the submission criteria 1459 rows.
@@ -125,10 +121,12 @@ def log_transformation():
 # training_data = training_data.drop(training_data[(training_data['GrLivArea'] > 4000) & (training_data['SalePrice']
 # < 300000)].index)
 
-print("Shape of training data after outliers after ignored:", training_data.shape)
-print("Shape of test date after outliers after ignored:", test_data.shape)
+print("before log transformation", training_data)
 
 log_transformation()
+
+print("Shape of training data after log transformation ", training_data.shape)
+print("Shape of test date after log transformation :", test_data.shape)
 
 y = training_data['SalePrice']
 
@@ -223,7 +221,7 @@ df_categorical['SaleType'] = df_categorical['SaleType'].mode()[0]
 df_categorical['Exterior2nd'] = df_categorical['Exterior2nd'].mode()[0]
 df_categorical['Exterior1st'] = df_categorical['Exterior1st'].mode()[0]
 
-print("The shape of categorical after processing", df_categorical)
+print("The shape of categorical after processing", df_categorical.shape)
 
 # 4.1 Preprocessing integer features
 # we can tackle the missing numeric values with some numeric dataframes
@@ -356,16 +354,21 @@ print("all features Data Shape:", df_all_features.shape)
 file_path_impute = "/Users/godfreykrutzsch/Desktop/ML-Challenge_House Price/super_merge.csv"
 df_all_features.to_csv(file_path_impute, index=False)
 
-X = df_all_features
+# declare standard scaler
+scaler = StandardScaler()
 
-print("we check the two parameters shape before splitt")
+# standardized all now numeric features.
+X = scaler.fit_transform(df_all_features)
+X_test = X
+
+print("we check the two parameters shape before split")
 
 print("The X value shape", X.shape)
 print("The Y value shape", y_value.shape)
 
 # assert len(X) = 1458, "Dataset does not have enough samples for the specified test size."
 
-X_train, X_test, y_train, y_test = train_test_split(X, y_value, test_size=0.1, random_state=42)
+X_train, X_val, y_train, y_test = train_test_split(X, y_value, test_size=0.10, random_state=42)
 
 # Separate back into training and test sets for submission where rows must be 1459
 # X_train = df_all_features.iloc[:1460]
@@ -375,25 +378,71 @@ X_train, X_test, y_train, y_test = train_test_split(X, y_value, test_size=0.1, r
 
 
 print("X_train shape:", X_train.shape)
+print("X_Val shape:", X_val.shape)
 print("X_test shape:", X_test.shape)
 
 print("y_train shape:", y_train.shape)
 print("y_test shape:", y_test.shape)
 
-print("check how many predictions")
+
 
 lm = LinearRegression()
+ridge = Ridge()
+random_forest = RandomForestRegressor()
+lasso = Lasso()
+elas_net = ElasticNet()
+
+
+stacking_model = StackingRegressor(
+    estimators=[
+        ('ridge', ridge),
+        ('rf', random_forest),
+        ('lass', lasso),
+        ('elass', elas_net)
+    ],
+    final_estimator=RidgeCV()
+)
+
+
+# train lm and stack ml models
+stacking_model.fit(X_train, y_train)
 lm.fit(X_train, y_train)
-y_pred = lm.predict(X_test)
 
-print("These must equal each other for a R score")
-print("Predictions on test set:", y_pred.shape)
-print("the y test", y_test)
+# lm prediction with X test and X Val and Stack prediction with X_test
+y_pred_X_test = lm.predict(X_test)
+y_pred_X_val = lm.predict(X_val)
+y_pred_Stack = stacking_model.predict(X_test)
 
 
-# corrmat = pd.concat(
-#    [df_numeric_independent_imputed_v2.reset_index(drop=True), df_numeric_dependent.reset_index(drop=True)],
-#    axis=1).corr()
+rmse = np.sqrt(mean_squared_error(y_value, y_pred_Stack))
+r2 = r2_score(y_value, y_pred_Stack)
+
+# before rmse undo the log transformation on sales price for poor rmse and r-score for linear regression
+
+training_data["SalePrice"] = np.expm1(training_data["SalePrice"])
+y_value = training_data["SalePrice"]
+
+rmse_2 = np.sqrt(mean_squared_error(y_value, y_pred_X_test))
+r2_2 = r2_score(y_value,y_pred_X_test)
+
+print("The Root Mean Squared Error for Stacking", rmse)
+print("The Root Mean Squared Error for X-Test and Linear only", rmse_2)
+
+print("*****************************************")
+print(" The R score for Y_Pred_Stack ", r2)
+print(" The R score for Y pred_ X Test linear only", r2_2)
+
+print("Prediction  X Val shape", y_pred_X_val.shape)
+print("X Val results", y_pred_X_val)
+
+print("Predictions X Test shape ", y_pred_X_test.shape)
+print("X Test results", y_pred_X_test)
+
+print("The Stack set of ml shape ", y_pred_Stack.shape)
+print("The Stack results", y_pred_Stack)
+
+
+# corrmat = pd.concat([df_numeric_independent_imputed_v2.reset_index(drop=True), df_numeric_dependent.reset_index(drop=True)],axis=1).corr()
 
 
 # we identify features that are multicollinearity
@@ -422,15 +471,12 @@ def showHeatmap_two():
 
 
 # showHeatmap_two()
+# showHeatmap_two()
 # grLiveArea_Saleprice()
 # totalBsmtSF_SalePrice()
 # garageCars_SalePrice()
 # overallLivingQual()
 
-
-# 5.0 feature engineering
-
-#  a shed load of diagrams some useful others not.
 
 def showAllDiagrms():
     sns.set()
@@ -439,15 +485,12 @@ def showAllDiagrms():
     sns.pairplot(corrmat[cols], height=2.5)
     plt.show()
 
+print("Print ids", training_data['Id'])
 
-print("quick check b 4 sub")
-print(y_pred)
+submission = pd.DataFrame({
+    'Id': training_data['Id'],
+    'SalePrice': y_pred_Stack})
 
-submission = pd.DataFrame()
-X_test['Id'] = X_test['Id'].astype(int)
-submission['Id'] = X_test['Id']
-submission['SalePrice'] = y_pred
-submission.to_csv("/Users/godfreykrutzsch/Desktop/ML-Challenge_House Price/submission_final.csv", index=False)
+submission.to_csv("/Users/godfreykrutzsch/Desktop/ML-Challenge_House Price/friday_submission_final.csv", index=False)
 
-r2 = r2_score(y_test, y_pred)
-print("We print the r-score", r2)
+
